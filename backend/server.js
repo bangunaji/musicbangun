@@ -60,15 +60,34 @@ app.get('/api/stream/:videoId', async (req, res) => {
     }
 });
 
-// Get personalized library (requires cookie in init)
+// Get content for the home screen
+app.get('/api/home', async (req, res) => {
+    try {
+        if (!initialized) {
+            await ytmusic.initialize();
+            initialized = true;
+        }
+        const sections = await ytmusic.getHomeSections();
+        // Flatten or filter sections to just songs for simplicity on home
+        let songs = [];
+        for (const section of sections) {
+            if (section.contents) {
+                songs.push(...section.contents.filter(item => item.type === 'SONG'));
+            }
+        }
+        res.json(songs.slice(0, 20)); // Return first 20 songs
+    } catch (error) {
+        console.error('Home error:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// Update library fallback
 app.get('/api/library', async (req, res) => {
     try {
         if (!initialized) return res.status(400).json({ error: 'YTMusic not initialized with cookie' });
-        
-        // Note: ts-npm-ytmusic-api library methods for library might vary.
-        // Usually it's getLibrary() or similar.
-        const results = await ytmusic.getHome(); // Fallback to home if library is not direct
-        res.json(results);
+        const sections = await ytmusic.getHomeSections(); 
+        res.json(sections);
     } catch (error) {
         console.error('Library error:', error);
         res.status(500).json({ error: error.message });

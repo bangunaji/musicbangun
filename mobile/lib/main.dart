@@ -4,12 +4,12 @@ import 'package:just_audio/just_audio.dart';
 import 'package:audio_video_progress_bar/audio_video_progress_bar.dart';
 import 'package:dio/dio.dart';
 import 'package:lucide_icons/lucide_icons.dart';
+import 'constants.dart';
 
 void main() {
   runApp(const MusicPlayerApp());
 }
 
-// Global instance for simplicity in this demo, usually better handled with Provider/GetIt
 final AudioPlayer _audioPlayer = AudioPlayer();
 
 class MusicPlayerApp extends StatelessWidget {
@@ -48,26 +48,13 @@ class _MainScreenState extends State<MainScreen> {
   int _currentIndex = 0;
   Map<String, dynamic>? _currentSong;
 
-  final List<Widget> _screens = [];
-
-  @override
-  void initState() {
-    super.initState();
-    _screens.addAll([
-      HomeScreen(onPlay: _playSong),
-      SearchScreen(onPlay: _playSong),
-      const LibraryScreen(),
-    ]);
-  }
-
   void _playSong(Map<String, dynamic> song) async {
     setState(() {
       _currentSong = song;
     });
     try {
       final videoId = song['videoId'];
-      // The backend stream endpoint pipes the audio
-      final streamUrl = 'http://localhost:3000/api/stream/$videoId';
+      final streamUrl = '${Constants.baseUrl}/api/stream/$videoId';
       await _audioPlayer.setUrl(streamUrl);
       _audioPlayer.play();
     } catch (e) {
@@ -80,7 +67,14 @@ class _MainScreenState extends State<MainScreen> {
     return Scaffold(
       body: Stack(
         children: [
-          _screens[_currentIndex],
+          IndexedStack(
+            index: _currentIndex,
+            children: [
+              HomeScreen(onPlay: _playSong),
+              SearchScreen(onPlay: _playSong),
+              const LibraryScreen(),
+            ],
+          ),
           if (_currentSong != null)
             Positioned(
               bottom: 0,
@@ -119,9 +113,37 @@ class _MainScreenState extends State<MainScreen> {
 }
 
 // --- Home Screen ---
-class HomeScreen extends StatelessWidget {
+class HomeScreen extends StatefulWidget {
   final Function(Map<String, dynamic>) onPlay;
   const HomeScreen({super.key, required this.onPlay});
+
+  @override
+  State<HomeScreen> createState() => _HomeScreenState();
+}
+
+class _HomeScreenState extends State<HomeScreen> {
+  List<dynamic> _trendingSongs = [];
+  bool _isLoading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _fetchHomeData();
+  }
+
+  Future<void> _fetchHomeData() async {
+    try {
+      final dio = Dio();
+      final response = await dio.get('${Constants.baseUrl}/api/home');
+      setState(() {
+        _trendingSongs = response.data;
+        _isLoading = false;
+      });
+    } catch (e) {
+      debugPrint('Home data error: $e');
+      setState(() => _isLoading = false);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -130,6 +152,7 @@ class HomeScreen extends StatelessWidget {
         slivers: [
           SliverAppBar(
             expandedHeight: 200,
+            pinned: true,
             flexibleSpace: FlexibleSpaceBar(
               title: Text('Violet Music', style: GoogleFonts.outfit(fontWeight: FontWeight.bold)),
               background: Container(
@@ -149,13 +172,59 @@ class HomeScreen extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text('Quick Picks', style: Theme.of(context).textTheme.headlineSmall),
+                  Text('Trending Now', style: Theme.of(context).textTheme.headlineSmall),
                   const SizedBox(height: 16),
-                  const Center(child: Text('Search for your favorite songs to start!')),
+                  _isLoading 
+                      ? const Center(child: CircularProgressIndicator())
+                      : GridView.builder(
+                          shrinkWrap: true,
+                          physics: const NeverScrollableScrollPhysics(),
+                          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                            crossAxisCount: 2,
+                            mainAxisSpacing: 16,
+                            crossAxisSpacing: 16,
+                            childAspectRatio: 0.8,
+                          ),
+                          itemCount: _trendingSongs.length,
+                          itemBuilder: (context, index) {
+                            final song = _trendingSongs[index];
+                            return SongCard(song: song, onTap: () => widget.onPlay(song));
+                          },
+                        ),
                 ],
               ),
             ),
           ),
+        ],
+      ),
+    );
+  }
+}
+
+class SongCard extends StatelessWidget {
+  final Map<String, dynamic> song;
+  final VoidCallback onTap;
+
+  const SongCard({super.key, required this.song, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Expanded(
+            child: Container(
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(16),
+                image: DecorationImage(image: NetworkImage(song['thumbnails'][0]['url']), fit: BoxFit.cover),
+              ),
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(song['name'] ?? 'Unknown', style: const TextStyle(fontWeight: FontWeight.bold), maxLines: 1, overflow: TextOverflow.ellipsis),
+          Text(song['artist']['name'] ?? 'Artist', style: const TextStyle(fontSize: 12, color: Colors.white70)),
         ],
       ),
     );
@@ -181,8 +250,7 @@ class _SearchScreenState extends State<SearchScreen> {
     setState(() => _isLoading = true);
     try {
       final dio = Dio();
-      // Adjust localhost to 10.0.2.2 if using Android Emulator
-      final response = await dio.get('http://localhost:3000/api/search', queryParameters: {'q': query});
+      final response = await dio.get('${Constants.baseUrl}/api/search', queryParameters: {'q': query});
       setState(() => _results = response.data);
     } catch (e) {
       debugPrint('Search error: $e');
@@ -210,11 +278,11 @@ class _SearchScreenState extends State<SearchScreen> {
               itemCount: _results.length,
               itemBuilder: (context, index) {
                 final item = _results[index];
-                final thumbnail = item['thumbnails'][0]['url'];
+                if (item['type'] != 'SONG' && item['type'] != 'VIDEO') return const SizedBox.shrink();
                 return ListTile(
                   leading: ClipRRect(
                     borderRadius: BorderRadius.circular(8),
-                    child: Image.network(thumbnail, width: 50, height: 50, fit: BoxFit.cover),
+                    child: Image.network(item['thumbnails'][0]['url'], width: 50, height: 50, fit: BoxFit.cover),
                   ),
                   title: Text(item['name'] ?? 'Unknown', maxLines: 1, overflow: TextOverflow.ellipsis),
                   subtitle: Text(item['artist']['name'] ?? 'Various Artists'),
@@ -260,9 +328,12 @@ class MiniPlayer extends StatelessWidget {
         ),
         child: Row(
           children: [
-            ClipRRect(
-              borderRadius: BorderRadius.circular(8),
-              child: Image.network(song['thumbnails'][0]['url'], width: 50, height: 50, fit: BoxFit.cover),
+            Hero(
+              tag: 'artwork',
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(8),
+                child: Image.network(song['thumbnails'][0]['url'], width: 50, height: 50, fit: BoxFit.cover),
+              ),
             ),
             const SizedBox(width: 12),
             Expanded(
@@ -313,18 +384,21 @@ class FullPlayerScreen extends StatelessWidget {
           Container(width: 40, height: 4, decoration: BoxDecoration(color: Colors.white30, borderRadius: BorderRadius.circular(2))),
           const SizedBox(height: 48),
           // Artwork
-          Container(
-            height: 300,
-            width: double.infinity,
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(24),
-              image: DecorationImage(image: NetworkImage(song['thumbnails'][0]['url']), fit: BoxFit.cover),
-              boxShadow: [BoxShadow(color: Colors.deepPurple.withOpacity(0.5), blurRadius: 30, spreadRadius: 2)],
+          Hero(
+            tag: 'artwork',
+            child: Container(
+              height: 300,
+              width: double.infinity,
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(24),
+                image: DecorationImage(image: NetworkImage(song['thumbnails'][0]['url']), fit: BoxFit.cover),
+                boxShadow: [BoxShadow(color: Colors.deepPurple.withOpacity(0.5), blurRadius: 30, spreadRadius: 2)],
+              ),
             ),
           ),
           const SizedBox(height: 48),
           // Info
-          Text(song['name'] ?? 'Unknown', style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold), textAlign: TextAlign.center),
+          Text(song['name'] ?? 'Unknown', style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold), textAlign: TextAlign.center, maxLines: 2, overflow: TextOverflow.ellipsis),
           const SizedBox(height: 8),
           Text(song['artist']['name'] ?? 'Artist', style: const TextStyle(fontSize: 16, color: Colors.white70)),
           const SizedBox(height: 48),
