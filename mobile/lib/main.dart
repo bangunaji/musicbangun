@@ -80,18 +80,18 @@ class _MainScreenState extends State<MainScreen> {
       bool isSucess = false;
       String lastErrorMessage = "";
 
-      // Mekanisme Retry: Mencoba setiap stream yang tersedia (m4a, webm, dll)
+      // Mekanisme Retry: Mencoba setiap stream yang tersedia menggunakan Proxy di Backend
       for (var stream in audioStreams) {
         try {
-          debugPrint('Mencoba stream: ${stream.container.name} | Bitrate: ${stream.bitrate}');
+          debugPrint('Mencoba stream via Proxy: ${stream.container.name} | Bitrate: ${stream.bitrate}');
+          
+          // Membungkus URL YouTube ke dalam endpoint proxy backend kita
+          final encodedUrl = Uri.encodeComponent(stream.url.toString());
+          final proxyUrl = "${Constants.baseUrl}/api/proxy?url=$encodedUrl";
           
           await _audioPlayer.setAudioSource(
             AudioSource.uri(
-              stream.url,
-              headers: {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/92.0.4515.107 Safari/537.36',
-                'Referer': 'https://www.youtube.com/',
-              },
+              Uri.parse(proxyUrl),
             ),
           );
           
@@ -100,7 +100,7 @@ class _MainScreenState extends State<MainScreen> {
           break; // Berhasil! Keluar dari loop retry
         } catch (retryError) {
           lastErrorMessage = retryError.toString();
-          debugPrint('Gagal menggunakan stream ${stream.container.name}: $retryError');
+          debugPrint('Gagal menggunakan stream proxy ${stream.container.name}: $retryError');
           continue; // Coba stream berikutnya di daftar
         }
       }
