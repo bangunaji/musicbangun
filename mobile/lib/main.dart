@@ -5,9 +5,16 @@ import 'package:audio_video_progress_bar/audio_video_progress_bar.dart';
 import 'package:dio/dio.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import 'package:youtube_explode_dart/youtube_explode_dart.dart';
+import 'package:audio_session/audio_session.dart';
 import 'constants.dart';
 
-void main() {
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  
+  // Konfigurasi AudioSession untuk prioritas audio yang lebih baik
+  final session = await AudioSession.instance;
+  await session.configure(const AudioSessionConfiguration.music());
+  
   runApp(const MusicPlayerApp());
 }
 
@@ -56,35 +63,59 @@ class _MainScreenState extends State<MainScreen> {
       _currentSong = song;
       _isPlaying = true;
     });
+
     try {
       final videoId = song['videoId'];
       
-      // Step 1: Ambil manifest streaming langsung dari YouTube (Native on Phone)
+      // Step 1: Ambil manifest streaming langsung dari YouTube
       final manifest = await _ytExplode.videos.streamsClient.getManifest(videoId);
       
-      // Step 2: Pilih stream audio (Utamakan m4a/mp4 untuk kompatibilitas terbaik di Android)
-      final audioStream = manifest.audioOnly.where((s) => s.container.name == 'mp4').isNotEmpty
-          ? manifest.audioOnly.where((s) => s.container.name == 'mp4').withHighestBitrate()
-          : manifest.audioOnly.withHighestBitrate();
+      // Ambil daftar stream audio dan urutkan dari bitrate tertinggi
+      final audioStreams = manifest.audioOnly.sortByBitrate();
       
-      // Step 3: Putar menggunakan AudioSource dengan User-Agent kustom
-      // Beberapa stream YouTube memerlukan User-Agent agar tidak dianggap bot/ilegal
-      await _audioPlayer.setAudioSource(
-        AudioSource.uri(
-          audioStream.url,
-          headers: {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/92.0.4515.107 Safari/537.36',
-          },
-        ),
-      );
-      _audioPlayer.play();
+      if (audioStreams.isEmpty) {
+        throw Exception("Tidak ada stream audio yang ditemukan untuk video ini.");
+      }
+
+      bool isSucess = false;
+      String lastErrorMessage = "";
+
+      // Mekanisme Retry: Mencoba setiap stream yang tersedia (m4a, webm, dll)
+      for (var stream in audioStreams) {
+        try {
+          debugPrint('Mencoba stream: ${stream.container.name} | Bitrate: ${stream.bitrate}');
+          
+          await _audioPlayer.setAudioSource(
+            AudioSource.uri(
+              stream.url,
+              headers: {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/92.0.4515.107 Safari/537.36',
+                'Referer': 'https://www.youtube.com/',
+              },
+            ),
+          );
+          
+          await _audioPlayer.play();
+          isSucess = true;
+          break; // Berhasil! Keluar dari loop retry
+        } catch (retryError) {
+          lastErrorMessage = retryError.toString();
+          debugPrint('Gagal menggunakan stream ${stream.container.name}: $retryError');
+          continue; // Coba stream berikutnya di daftar
+        }
+      }
+
+      if (!isSucess) {
+        throw Exception(lastErrorMessage);
+      }
+
     } catch (e) {
-      debugPrint('Error playing song: $e');
+      debugPrint('Error bermain lagu: $e');
       String errorMessage = e.toString();
       
       // Deteksi error spesifik untuk pesan yang lebih user-friendly
       if (errorMessage.contains('(0) source error')) {
-        errorMessage = "Gagal memuat sumber (Bisa jadi karena batasan YouTube atau jaringan).";
+        errorMessage = "Error (0): Server YouTube menolak koneksi langsung. Pastikan jam HP akurat atau coba lagu lain.";
       }
 
       if (mounted) {
@@ -92,16 +123,21 @@ class _MainScreenState extends State<MainScreen> {
           SnackBar(
             content: Text('Error: $errorMessage'),
             backgroundColor: Colors.redAccent,
-            duration: const Duration(seconds: 5),
-            action: SnackBarAction(label: 'Details', textColor: Colors.white, onPressed: () {
-              showDialog(
-                context: context,
-                builder: (context) => AlertDialog(
-                  title: const Text("Detail Error"),
-                  content: Text(e.toString()),
-                ),
-              );
-            }),
+            duration: const Duration(seconds: 8),
+            action: SnackBarAction(
+              label: 'Details', 
+              textColor: Colors.white, 
+              onPressed: () {
+                showDialog(
+                  context: context,
+                  builder: (context) => AlertDialog(
+                    title: const Text("Log Keamanan YouTube"),
+                    content: SingleChildScrollView(child: Text(e.toString())),
+                    actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text("Tutup"))],
+                  ),
+                );
+              }
+            ),
           ),
         );
       }
