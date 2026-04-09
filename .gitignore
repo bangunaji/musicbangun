@@ -1,0 +1,28 @@
+# Node.js
+backend/node_modules/
+backend/.env
+backend/npm-debug.log*
+backend/yarn-debug.log*
+backend/yarn-error.log*
+
+# Flutter
+mobile/.dart_tool/
+mobile/.packages
+mobile/.pub-cache/
+mobile/.pub/
+mobile/build/
+mobile/android/app/debug/
+mobile/android/app/profile/
+mobile/android/app/release/
+mobile/ios/Flutter/
+mobile/.metadata
+mobile/.flutter-plugins
+mobile/.flutter-plugins-dependencies
+
+# System Files
+.DS_Store
+Thumbs.db
+*.exe
+*.dll
+*.so
+*.dylib
