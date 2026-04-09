@@ -62,17 +62,47 @@ class _MainScreenState extends State<MainScreen> {
       // Step 1: Ambil manifest streaming langsung dari YouTube (Native on Phone)
       final manifest = await _ytExplode.videos.streamsClient.getManifest(videoId);
       
-      // Step 2: Pilih stream audio dengan bitrate tertinggi
-      final audioStream = manifest.audioOnly.withHighestBitrate();
+      // Step 2: Pilih stream audio (Utamakan m4a/mp4 untuk kompatibilitas terbaik di Android)
+      final audioStream = manifest.audioOnly.where((s) => s.container.name == 'mp4').isNotEmpty
+          ? manifest.audioOnly.where((s) => s.container.name == 'mp4').withHighestBitrate()
+          : manifest.audioOnly.withHighestBitrate();
       
-      // Step 3: Putar menggunakan URL langsung
-      await _audioPlayer.setUrl(audioStream.url.toString());
+      // Step 3: Putar menggunakan AudioSource dengan User-Agent kustom
+      // Beberapa stream YouTube memerlukan User-Agent agar tidak dianggap bot/ilegal
+      await _audioPlayer.setAudioSource(
+        AudioSource.uri(
+          audioStream.url,
+          headers: {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/92.0.4515.107 Safari/537.36',
+          },
+        ),
+      );
       _audioPlayer.play();
     } catch (e) {
       debugPrint('Error playing song: $e');
+      String errorMessage = e.toString();
+      
+      // Deteksi error spesifik untuk pesan yang lebih user-friendly
+      if (errorMessage.contains('(0) source error')) {
+        errorMessage = "Gagal memuat sumber (Bisa jadi karena batasan YouTube atau jaringan).";
+      }
+
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Gagal memutar lagu: $e'), backgroundColor: Colors.redAccent),
+          SnackBar(
+            content: Text('Error: $errorMessage'),
+            backgroundColor: Colors.redAccent,
+            duration: const Duration(seconds: 5),
+            action: SnackBarAction(label: 'Details', textColor: Colors.white, onPressed: () {
+              showDialog(
+                context: context,
+                builder: (context) => AlertDialog(
+                  title: const Text("Detail Error"),
+                  content: Text(e.toString()),
+                ),
+              );
+            }),
+          ),
         );
       }
     }
