@@ -48,8 +48,8 @@ app.get('/api/search', async (req, res) => {
 
 // Ambil URL audio langsung
 app.get('/api/stream/:videoId', async (req, res) => {
+    const { videoId } = req.params;
     try {
-        const { videoId } = req.params;
         console.log(`Mengambil URL streaming untuk: ${videoId}`);
         
         // Dapatkan stream info
