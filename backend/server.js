@@ -46,14 +46,24 @@ app.get('/api/search', async (req, res) => {
     }
 });
 
-// Stream audio directly
+// Stream audio langsung
 app.get('/api/stream/:videoId', async (req, res) => {
     try {
         const { videoId } = req.params;
+        console.log(`Mencoba streaming lagu: ${videoId}`);
+        
+        // Dapatkan stream info
         const streamInfo = await play.stream(`https://www.youtube.com/watch?v=${videoId}`);
         
-        res.setHeader('Content-Type', 'audio/mpeg');
+        // Tentukan Content-Type berdasarkan tipe stream (biasanya opus atau m4a)
+        const contentType = streamInfo.type === 'm4a' ? 'audio/mp4' : 'audio/webm';
+        
+        res.setHeader('Content-Type', contentType);
         streamInfo.stream.pipe(res);
+        
+        streamInfo.stream.on('end', () => console.log(`Streaming selesai: ${videoId}`));
+        streamInfo.stream.on('error', (err) => console.error(`Aliran terputus: ${err}`));
+        
     } catch (error) {
         console.error('Stream error for videoId:', videoId, error);
         res.status(500).json({ error: error.message });
@@ -94,6 +104,15 @@ app.get('/api/library', async (req, res) => {
     }
 });
 
-app.listen(port, () => {
+const server = app.listen(port, () => {
     console.log(`Backend listening at http://localhost:${port}`);
+});
+
+server.on('error', (e) => {
+    if (e.code === 'EADDRINUSE') {
+        console.error(`!!! ERROR: Port ${port} sudah digunakan oleh aplikasi lain.`);
+        console.error(`Silakan tutup aplikasi lain yang menggunakan port ${port} atau ganti port di server.js.`);
+    } else {
+        console.error('Terjadi kesalahan pada server:', e);
+    }
 });
