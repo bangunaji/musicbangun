@@ -52,11 +52,23 @@ app.get('/api/stream/:videoId', async (req, res) => {
     try {
         console.log(`Mengambil URL streaming untuk: ${videoId}`);
         
-        // Dapatkan stream info
-        const streamInfo = await play.stream(`https://www.youtube.com/watch?v=${videoId}`);
+        // Metode 1: Ambil info video lengkap
+        const info = await play.video_info(`https://www.youtube.com/watch?v=${videoId}`);
         
-        // Kirim URL langsung ke aplikasi
-        res.json({ url: streamInfo.url });
+        // Cari format audio saja yang terbaik
+        const bestAudio = info.format
+            .filter(f => f.mimeType?.includes('audio'))
+            .sort((a, b) => (b.bitrate || 0) - (a.bitrate || 0))[0];
+
+        if (bestAudio && bestAudio.url) {
+            console.log(`Berhasil mendapatkan URL langsung via video_info`);
+            res.json({ url: bestAudio.url });
+        } else {
+            // Metode Cadangan: Gunakan play.stream standar
+            console.log(`Mencoba metode cadangan play.stream...`);
+            const streamInfo = await play.stream(`https://www.youtube.com/watch?v=${videoId}`);
+            res.json({ url: streamInfo.url });
+        }
         
     } catch (error) {
         console.error('Stream info error for videoId:', videoId, error);
