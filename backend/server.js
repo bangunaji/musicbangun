@@ -46,26 +46,20 @@ app.get('/api/search', async (req, res) => {
     }
 });
 
-// Stream audio langsung
+// Ambil URL audio langsung
 app.get('/api/stream/:videoId', async (req, res) => {
     try {
         const { videoId } = req.params;
-        console.log(`Mencoba streaming lagu: ${videoId}`);
+        console.log(`Mengambil URL streaming untuk: ${videoId}`);
         
         // Dapatkan stream info
         const streamInfo = await play.stream(`https://www.youtube.com/watch?v=${videoId}`);
         
-        // Tentukan Content-Type berdasarkan tipe stream (biasanya opus atau m4a)
-        const contentType = streamInfo.type === 'm4a' ? 'audio/mp4' : 'audio/webm';
-        
-        res.setHeader('Content-Type', contentType);
-        streamInfo.stream.pipe(res);
-        
-        streamInfo.stream.on('end', () => console.log(`Streaming selesai: ${videoId}`));
-        streamInfo.stream.on('error', (err) => console.error(`Aliran terputus: ${err}`));
+        // Kirim URL langsung ke aplikasi
+        res.json({ url: streamInfo.url });
         
     } catch (error) {
-        console.error('Stream error for videoId:', videoId, error);
+        console.error('Stream info error for videoId:', videoId, error);
         res.status(500).json({ error: error.message });
     }
 });

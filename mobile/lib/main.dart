@@ -54,9 +54,19 @@ class _MainScreenState extends State<MainScreen> {
     });
     try {
       final videoId = song['videoId'];
-      final streamUrl = '${Constants.baseUrl}/api/stream/$videoId';
-      await _audioPlayer.setUrl(streamUrl);
-      _audioPlayer.play();
+      
+      // Step 1: Ambil URL streaming langsung dari backend
+      final dio = Dio();
+      final response = await dio.get('${Constants.baseUrl}/api/stream/$videoId');
+      final directUrl = response.data['url'];
+      
+      if (directUrl != null) {
+        // Step 2: Putar menggunakan URL tersebut
+        await _audioPlayer.setUrl(directUrl);
+        _audioPlayer.play();
+      } else {
+        throw Exception("Gagal mendapatkan URL streaming");
+      }
     } catch (e) {
       debugPrint('Error playing song: $e');
     }
