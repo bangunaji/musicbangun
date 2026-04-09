@@ -4,6 +4,7 @@ import 'package:just_audio/just_audio.dart';
 import 'package:audio_video_progress_bar/audio_video_progress_bar.dart';
 import 'package:dio/dio.dart';
 import 'package:lucide_icons/lucide_icons.dart';
+import 'package:youtube_explode_dart/youtube_explode_dart.dart';
 import 'constants.dart';
 
 void main() {
@@ -11,6 +12,7 @@ void main() {
 }
 
 final AudioPlayer _audioPlayer = AudioPlayer();
+final YoutubeExplode _ytExplode = YoutubeExplode();
 
 class MusicPlayerApp extends StatelessWidget {
   const MusicPlayerApp({super.key});
@@ -47,28 +49,32 @@ class MainScreen extends StatefulWidget {
 class _MainScreenState extends State<MainScreen> {
   int _currentIndex = 0;
   Map<String, dynamic>? _currentSong;
+  bool _isPlaying = false;
 
   void _playSong(Map<String, dynamic> song) async {
     setState(() {
       _currentSong = song;
+      _isPlaying = true;
     });
     try {
       final videoId = song['videoId'];
       
-      // Step 1: Ambil URL streaming langsung dari backend
-      final dio = Dio();
-      final response = await dio.get('${Constants.baseUrl}/api/stream/$videoId');
-      final directUrl = response.data['url'];
+      // Step 1: Ambil manifest streaming langsung dari YouTube (Native on Phone)
+      final manifest = await _ytExplode.videos.streamsClient.getManifest(videoId);
       
-      if (directUrl != null) {
-        // Step 2: Putar menggunakan URL tersebut
-        await _audioPlayer.setUrl(directUrl);
-        _audioPlayer.play();
-      } else {
-        throw Exception("Gagal mendapatkan URL streaming");
-      }
+      // Step 2: Pilih stream audio dengan bitrate tertinggi
+      final audioStream = manifest.audioOnly.withHighestBitrate();
+      
+      // Step 3: Putar menggunakan URL langsung
+      await _audioPlayer.setUrl(audioStream.url.toString());
+      _audioPlayer.play();
     } catch (e) {
       debugPrint('Error playing song: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Gagal memutar lagu: $e'), backgroundColor: Colors.redAccent),
+        );
+      }
     }
   }
 
